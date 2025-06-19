@@ -8,12 +8,13 @@ namespace MyWinTools
     {
         static int Main(string[] args)
         {
-            return Parser.Default.ParseArguments<DeleteCommand, MoreCommand, NotepadCommand, Notepad2Command>(args)
+            return Parser.Default.ParseArguments<DeleteCommand, MoreCommand, NotepadCommand, Notepad2Command, BeyondCompareCommand>(args)
                 .MapResult(
                     (DeleteCommand cmd) => cmd.Execute(),
                     (MoreCommand cmd) => cmd.Execute(),
                     (NotepadCommand cmd) => cmd.Execute(),
                     (Notepad2Command cmd) => cmd.Execute(),
+                    (BeyondCompareCommand cmd) => cmd.Execute(),
                     errors => 1
                 );
         }
