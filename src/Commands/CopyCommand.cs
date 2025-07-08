@@ -48,6 +48,7 @@ namespace MyWinTools.Commands
                     foreach (string file in Directory.GetFiles(absoluteTargetPath, sourceFileName, SearchOption.AllDirectories))
                     {
                         File.Copy(absoluteSourcePath, file, true);
+                        Console.WriteLine($"Copied to: {file}");
                         count++;
                     }
 
