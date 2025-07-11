@@ -10,7 +10,7 @@ using System.Linq;
 
 namespace MyWinTools.Commands
 {
-    [Verb("--msn-vp", HelpText = "Process MSN validation page reports and update spec files")]
+    [Verb("--msn-vp", HelpText = "Process MSN validation page reports and update spec files, this command must be run in msnews-experience repo root folder")]
     public class MsnVpCommand
     {
         [Value(0, Required = true, HelpText = "Input file path containing MSN validation page links")]
@@ -51,7 +51,14 @@ namespace MyWinTools.Commands
 
         private async Task ProcessLinksAsync(string inputPath, string cookie)
         {
-            var links = ExtractLinks(inputPath);
+            var links = ExtractLinks(inputPath).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            Console.WriteLine($"Total {links.Count} reports:");
+            foreach (var link in links)
+            {
+                Console.WriteLine(link);
+            }
+
             using (var client = new HttpClient())
             {
                 ConfigureHttpClient(client, cookie);
@@ -60,6 +67,7 @@ namespace MyWinTools.Commands
                 {
                     try
                     {
+                        Console.WriteLine();
                         Console.WriteLine($"Processing: {link}");
                         string content = await client.GetStringAsync(link);
                         var (specFile, updateFileUrl) = ExtractSpecAndUpdateInfo(content);
@@ -70,16 +78,29 @@ namespace MyWinTools.Commands
                             continue;
                         }
 
-                        Console.WriteLine($"Found spec file: {specFile}");
-                        Console.WriteLine($"Found update URL: {updateFileUrl}");
+                        // example specFile: C:\__w\1\s\app-types\visualparity-tests\suites\weather\copilot\desktopWeatherAlert\desktop.copilot.alert.spec.json
+
+                        // Replace the folder string before "app-types" with Environment.CurrentDirectory
+                        var appTypesIndex = specFile.IndexOf("app-types", StringComparison.OrdinalIgnoreCase);
+                        if (appTypesIndex >= 0)
+                        {
+                            var relativePath = specFile.Substring(appTypesIndex);
+                            specFile = Path.Combine(Environment.CurrentDirectory, relativePath);
+                        }
+
+                        var metadataFile = specFile.Replace(".spec.json", ".metadata.json");
+
+                        Console.WriteLine($"Spec file: {specFile}");
+                        Console.WriteLine($"Metadata file: {metadataFile}");
+                        Console.WriteLine($"Metadata Update file: {updateFileUrl}");
 
                         string updateContent = await client.GetStringAsync(updateFileUrl);
-                        File.WriteAllText(specFile, updateContent);
-                        Console.WriteLine($"Updated spec file: {specFile}");
+                        File.WriteAllText(metadataFile, updateContent);
+                        Console.WriteLine($"Updated spec file: {metadataFile}");
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Error processing {link}: {ex.Message}");
+                        YellowConsole($"Error processing {link}: {ex.Message}");
                     }
                 }
             }
@@ -113,22 +134,41 @@ namespace MyWinTools.Commands
         private IEnumerable<string> ExtractLinks(string inputPath)
         {
             string content = File.ReadAllText(inputPath);
-            var regex = new Regex(@"https://int\.msn.*?\.report\.html", RegexOptions.IgnoreCase);
-            return regex.Matches(content).Cast<Match>().Select(m => m.Value);
+
+            var tokens = content.Split('?', '=', '"')
+                .Where(s => s.StartsWith("https://int.msn.com/msnBaselines", StringComparison.OrdinalIgnoreCase))
+                .Where(s => s.EndsWith(".report.html", StringComparison.OrdinalIgnoreCase));
+
+            return tokens;
         }
 
         private (string specFile, string updateFileUrl) ExtractSpecAndUpdateInfo(string content)
         {
-            var specRegex = new Regex(@"[^\s""']+\.spec\.json");
-            var updateRegex = new Regex(@"https://int\.msn.*?\.metadata\.updated\.json");
-
-            var specMatch = specRegex.Match(content);
-            var updateMatch = updateRegex.Match(content);
+            var tokens = content.Split('<', '>', '"');
 
             return (
-                specMatch.Success ? specMatch.Value : null,
-                updateMatch.Success ? updateMatch.Value : null
-            );
+                tokens.FirstOrDefault(s => s.EndsWith(".spec.json", StringComparison.Ordinal)),
+                tokens.FirstOrDefault(s => s.EndsWith(".metadata.updated.json", StringComparison.Ordinal))
+                );
+
+            //var specRegex = new Regex(@"[^\s""']+\.spec\.json");
+            //var updateRegex = new Regex(@"https://int\.msn.*?\.metadata\.updated\.json");
+
+            //var specMatch = specRegex.Match(content);
+            //var updateMatch = updateRegex.Match(content);
+
+            //return (
+            //    specMatch.Success ? specMatch.Value : null,
+            //    updateMatch.Success ? updateMatch.Value : null
+            //);
+        }
+
+        private void YellowConsole(string text)
+        {
+            var originalColor = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine(text);
+            Console.ForegroundColor = originalColor;
         }
     }
 }
